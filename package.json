@@ -1,0 +1,46 @@
+{
+  "name": "transaction-agent",
+  "version": "0.1.0",
+  "description": "MCP server + Claude agent for creating Real Brokerage draft transactions from English prompts",
+  "bin": {
+    "transaction-agent": "./dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "rm -rf dist && tsc && cp src/auth/loginPage.html dist/auth/loginPage.html",
+    "dev": "tsc --watch",
+    "lint": "tsc --noEmit",
+    "start": "node dist/index.js",
+    "generate": "openapi-generator-cli generate",
+    "sync": "./scripts/sync-arrakis.sh",
+    "install-config": "./scripts/install-config.sh",
+    "test": "vitest --watch=false",
+    "test:watch": "vitest",
+    "test:contract": "RUN_CONTRACT_TESTS=1 vitest --watch=false test/contract",
+    "docker:build": "docker build -t transaction-agent ."
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "axios": "^1.8.4",
+    "dotenv": "^16.4.7",
+    "form-data": "^4.0.0",
+    "open": "^10.1.0",
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.24.1"
+  },
+  "devDependencies": {
+    "@openapitools/openapi-generator-cli": "^2.18.4",
+    "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^2.1.8",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "license": "MIT"
+}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "transaction-builder": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/transaction-agent/dist/index.js"]
+    }
+  }
+}
