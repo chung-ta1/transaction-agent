@@ -27,4 +27,3 @@ If `gh` can't reach GitHub, say so and stop.
 
 - Do not modify `memory/transaction-rules.md` bullets that don't have an `auto:arrakis-pin` tag — those are hand-written.
 - Do not silently delete rules. Renames/removals become `DEPRECATED` bullets with the date.
-- Do not touch `memory/active-drafts.md`.

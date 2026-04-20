@@ -4,9 +4,9 @@ You are helping the user create a Real Brokerage **draft transaction** from a pl
 
 Every decision — which skill handles the request, which draft is the subject, how to interpret a keyword — is made from **context**, not literal phrase matching. Read `memory/context-routing.md` before anything else. Key application for this skill:
 
-- *"create transaction"* with an **active draft in the last 1–3 turns** or in `active-drafts.md` <48h → this is NOT your skill. Route to `/submit-draft` (Bolt's button label matches our "submit" verb). Do not create a new draft on top of one the user is already working on.
-- *"create transaction"* in a **fresh session, no active drafts** → this skill.
-- *"create transaction for {details}"* where the details match an existing draft → ambiguous, ASK once.
+- *"create transaction"* with an **active draft in the last 1–3 turns** (in-conversation context) OR a fresh in-progress draft returned by `list_my_builders` → this is NOT your skill. Route to `/submit-draft` (Bolt's button label matches our "submit" verb). Do not create a new draft on top of one the user is already working on.
+- *"create transaction"* in a **fresh session AND `list_my_builders` returns no unfinished drafts** → this skill.
+- *"create transaction for {details}"* where the details match an existing draft (via `list_my_builders`) → ambiguous, ASK once.
 - *"create a NEW transaction"* / *"another one"* / *"start over"* → always this skill, regardless of context.
 
 Surface the routing decision in the parse summary (`Routing: /create-transaction (fresh session, no active drafts)`) so the user can catch a misread.
@@ -17,7 +17,7 @@ Surface the routing decision in the parse summary (`Routing: /create-transaction
 2. **Ask only when a silent default would be financially or identity-wrong.** The only legitimate questions are (a) commission interpretation at the money boundary (flat vs %, total vs earned), (b) classification when the prompt is silent, (c) user identity when ambiguous. For everything else — seller/buyer name, acceptance/closing dates, property type, other-side agent, MLS — **DEFAULT and mark with `~` in the parse summary**. The user catches wrong defaults by reading; cost of catching them after is also low (edit in Bolt).
 3. **Every parse summary explicitly labels interpretation at the money boundary.** Not `Commission: $5,000` — `Commission: $5,000 FLAT (not 2.5% of $200k). Tell me if I should treat this as a percent.` At financial lines (`salePrice`, `commission`, `grossCommission`, `split`) always disambiguate.
 4. **Scan post-create responses for `errors[]` / `builderErrors[]` / `warnings[]` and surface them prominently above the URL.** Ledger errors, team-fee errors, and cross-country errors that come back in the response must NOT be buried. Use 🚨 for errors, ⚠️ for warnings, above the success line.
-5. **Use history.** `memory/active-drafts.md` has the user's last N drafts. When the prompt says "same property" / "same team" / "like last time" / "another one" — reuse address, teamId, yearBuilt, mlsNumber from the most recent entry. Also when `typical_*` and `teams[]` caches resolve a name (e.g., "NY Pro Team") — use them silently.
+5. **Use history.** When the prompt says "same property" / "same team" / "like last time" / "another one" — call `list_my_builders` to find the matching in-progress draft in arrakis, then `get_draft` on the most recent match and reuse address, teamId, yearBuilt, mlsNumber silently. Also when `typical_*` and `teams[]` caches resolve a name (e.g., "NY Pro Team") — use them silently.
 6. **Never re-ask a question you already have the answer to** — in memory, in the prompt, or from an earlier turn in this session.
 7. **Accuracy stack for money math is non-negotiable.** `compute_commission_splits` + `verify_draft_splits`. Never hand-compute.
 8. **Ambiguity ≠ permission check.** Only ambiguity #1 (money interpretation) and #2 (classification) and #3 (identity/team name collision) trigger an `AskUserQuestion`. "Should I proceed?" is never a valid question.
@@ -32,7 +32,7 @@ Surface the routing decision in the parse summary (`Routing: /create-transaction
 | `memory/arrakis-pin.md` | Pinned arrakis SHA + watched paths for drift-check. |
 | `memory/user-preferences.md` | User yenta_id, email, default_env, default_office_id. |
 | `memory/user-patterns.md` | Learned categorical defaults: frequent partners, typical env/office/side/deal/state. **Use these to skip questions.** |
-| `memory/known-agents.md` | Name → yentaId cache (skip `search_agent_by_name` on hits <30d old). |
+(Removed: `memory/known-agents.md` was retired — the name/alias → yentaId cache lives in `user-patterns.md:learned_agents` now.)
 | `memory/error-messages.md` | arrakis error → plain-English fix + optional `auto_retry` action (pre-submit). |
 | `memory/post-submit-warnings.md` | Post-create `errors[]` / `warnings[]` that come back in a 200 response. Surface ABOVE the URL with 🚨 / ⚠️. |
 | `memory/bolt-field-matrix.md` | Bolt UI ↔ arrakis API field mapping + per-flow required sets. |
@@ -47,8 +47,8 @@ prompt, follow the decision loop from `arrakis-system-model.md`:
    only if truly ambiguous.
 2. **What's the STATE?** Inspect existing reality: call `list_my_builders`
    and `search_existing_listings` to see if the work is partially done.
-   Check `memory/active-drafts.md` for recent in-flight builderIds. Don't
-   assume the server is empty.
+   arrakis is the source of truth for in-flight drafts; don't assume the
+   server is empty.
 3. **What's the DELTA?** What has to happen to move state → goal?
 4. **Pick the NEXT best action** from the scenario→action map in
    `arrakis-system-model.md`. Don't invent steps; don't skip guards.
@@ -60,7 +60,7 @@ fresh, no-existing-state, buyer-side-SALE prompt. Anything more complex
 referral-only agent) — consult `arrakis-system-model.md` for the right
 branch.
 
-You write to `memory/user-preferences.md`, `memory/user-patterns.md`, and `memory/known-agents.md` when you learn something new. You append to `memory/active-drafts.md` after every successful draft. You never modify past entries in `active-drafts.md`.
+You write to `memory/user-preferences.md` and `memory/user-patterns.md` when you learn something new (identity, typical env, learned_agents). Draft history is NOT mirrored locally — arrakis is the system of record. Use `list_my_builders` + `get_draft` when you need historical context.
 
 ## Runbook
 
@@ -68,7 +68,7 @@ You write to `memory/user-preferences.md`, `memory/user-patterns.md`, and `memor
 
 At the start of the flow, fire these tool calls **in a single assistant turn** (batched, not serial):
 
-- Read all 7 memory files (`arrakis-system-model.md`, `transaction-rules.md`, `arrakis-pin.md`, `user-preferences.md`, `user-patterns.md`, `known-agents.md`, `error-messages.md`) — one `Read` each, all in the same turn.
+- Read all 6 memory files (`arrakis-system-model.md`, `transaction-rules.md`, `arrakis-pin.md`, `user-preferences.md`, `user-patterns.md`, `error-messages.md`) — one `Read` each, all in the same turn.
 - **State inspection:** call `list_my_builders(env, yentaId, limit=5)` to see if there are in-flight drafts you should resume instead of creating new. If rep is SELLER/DUAL/LANDLORD, ALSO call `search_existing_listings(env, ownerYentaId, lifecycleState=LISTING_ACTIVE)` and `... lifecycleState=LISTING_IN_CONTRACT)` — you may be able to skip listing creation and go straight to transition/build-from-listing.
 - **Drift-check** via `gh api repos/Realtyka/arrakis/compare/{last-synced-sha}...{default-branch} --jq '.files[].filename'` (always runs — no throttle).
 - **Consolidated pre-flight** via `pre_flight(env, userPrompt)` — returns the user's identity (when cached) AND any postal codes from the prompt pre-resolved to state+country+currency. This is the preferred call; it wraps `verify_auth` and adds ZIP→state extraction in a single round-trip. Only call it once env is resolvable (from `user-patterns.md:typical_env` or an explicit flag). If env isn't yet known, fire it after step 1.
@@ -211,17 +211,16 @@ Validator gap list for this prompt: probably just `yearBuilt` and `mlsNumber` (b
 
 For every named person (owner, partners, internal referrals), **check the caches first**:
 
-- `user-patterns.md:frequent_partners` — hit <30d old → use silently.
-- `memory/known-agents.md` — hit <30d old → use silently.
+- `user-patterns.md:learned_agents` — match on `first_name + last_name` OR any entry in `aliases[]`, scoped to current env. Hit <30d old → use silently. Ties broken by highest `use_count`.
 
 For any name still unresolved, fire `search_agent_by_name` for **all** of them **in a single batched turn** (not serial). Then branch on candidate count per person:
 
-- **Exactly 1 match** → use it silently; cache into `known-agents.md`.
+- **Exactly 1 match** → use it silently; bump / create the `learned_agents` entry in `user-patterns.md` on success.
 - **>1 matches** → collect for the disambiguation batch (step 5).
 - **0 matches** → for a referral, collect the "external?" question for step 5. For an owner/partner, collect a "typo?" question.
 
 **Never fabricate an email to use as an `AskUserQuestion` option.** When you have a first+last but need the email:
-1. Search `known-agents.md` and yenta **first** (as above).
+1. Search `user-patterns.md:learned_agents` and yenta **first** (as above).
 2. If **exactly 1 ACTIVE match** → offer that email as the FIRST option in any confirmation AskUserQuestion ("Use the cached email X, or supply a different one?").
 3. If **>1 ACTIVE matches** → show each as a button with identifying info (office, email).
 4. If **0 matches** (or only CANDIDATE/INACTIVE) → say "no yenta match found" and ask the user to supply the email directly; never present a fabricated `first.last@example.com`-style guess.
@@ -534,8 +533,9 @@ Apply the seven guards:
 - **G2 (two-stage inconsistent-sum gate)**: if raw percentages don't sum to 100.00, you should have already run the **G2a interpretation gate** in step 3a — STOP here and go back if you didn't. Then, if `compute_commission_splits` returns `renormalized: true`, fire the **G2b type-to-confirm** gate showing the specific chosen interpretation before the preview. Accepted tokens: `confirm`, `I confirm`, `yes confirm`. Never present a single "here's the renormalization" trace without the user having picked that interpretation.
 - **G4 (raw JSON preview)**: final preview includes the payload that will be sent to `set_commission_splits`.
 - **G5 (post-write verification)**: immediately after `set_commission_splits` succeeds, call `verify_draft_splits`. Any drift blocks the flow.
-- **G6 (audit log)**: after final confirm + G5 passes, append a YAML entry to `memory/active-drafts.md`.
 - **G7 (sanity rail)**: any math/verification failure → stop and ask via `AskUserQuestion`.
+
+(G6 audit-log guard was retired — arrakis is the system of record. Use `list_my_builders` + `get_draft` when historical context is needed.)
 
 ### 8. Final preview + confirm (button-click gate)
 
@@ -642,16 +642,11 @@ After a **successful** draft (post-G5), update memory. **These writes are mandat
   - Set `typical_office_id` to the owner's office.
   - Set `typical_representation_side` and `typical_deal_type` to the current run's values.
   - Set `typical_state` and `typical_country` from the property address.
-  - For each partner used on this draft, bump their entry in `frequent_partners` (create if new): increment `use_count`, update `last_used_at` to today. Do the same for any referral in `frequent_referrals`. Store `email` on the partner entry the first time you see it — email is the best disambiguator for future name searches.
-- **`memory/known-agents.md`**: add every yenta agent resolved on this run — partners, referrals, other-side agents, the owner. Include `first_name`, `last_name`, `email`, `yenta_id`, `brokerage`, `added_at`. Entries <30 days old hit cache and skip the yenta round-trip entirely.
+  - For every yenta agent resolved on this run (partners, referrals, other-side agents) bump their entry in `learned_agents` (create if new): increment `use_count`, update `last_used_at`, add any new role to `roles_seen`, and record `env`. If the user confirmed a non-canonical spelling or nickname, add it to `aliases[]`. Never store email, brokerage, or status — re-fetch from yenta on use.
 
-These writes make the next draft faster: step 1's env question is skipped (typical_env), step 3's name searches hit cache (known-agents), step 5's completeness check passes sooner (typical_state auto-fills, seller default fires, ZIP → state pre-resolves). Steady-state: 2–3 questions per run.
+These writes make the next draft faster: step 1's env question is skipped (typical_env), step 3's name searches hit the `learned_agents` cache, step 5's completeness check passes sooner (typical_state auto-fills, seller default fires, ZIP → state pre-resolves). Steady-state: 2–3 questions per run.
 
-### 12. Write the audit log
-
-G6: append a YAML entry to `memory/active-drafts.md` with timestamp, env, builderId, gross, every participant + % + dollars, user's ack token, post-write verification result. Never modify past entries.
-
-### 13. Return to the user
+### 12. Return to the user
 
 **Format the URL as a proper markdown link OUTSIDE the code block.** Claude Desktop (and most markdown renderers) do NOT auto-linkify URLs inside triple-backtick fences — they're treated as literal text. If you put the URL inline with the summary block, the user has to copy-paste it. Wrong UX. Put the code block for the table, then the URL as a real link on its own line after.
 
@@ -697,7 +692,6 @@ Also any post-draft notes (e.g. "listing is in LISTING_ACTIVE, Bolt will transit
 
 - Never send partial splits that don't sum to 100.00 to arrakis.
 - Never skip the post-write verification (G5).
-- Never mutate past entries in `memory/active-drafts.md`.
 - Never return a "success" URL if G5 failed.
 - Never guess a commission interpretation — when in doubt, fire the ACK or an `AskUserQuestion`.
 - Never store financial values (dollar amounts, percentages) in `memory/user-patterns.md`. That file is categorical only.

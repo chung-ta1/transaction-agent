@@ -117,11 +117,11 @@ Never compress these into a single line like `Sale · $20k · USD`. A user who d
 
 **G5. Post-write verification — dedicated tool.** Immediately after `set_commission_splits` succeeds, the agent **must** call `verify_draft_splits` (which fetches the draft and diffs committed vs. sent using `src/math/verifySplits.ts`). Any drift — missing participant, extra participant, or mismatched percent — returns `ok:false` with the specific diff. The agent stops the flow, translates the error, and does **not** return a "success" URL. The verification is code, not LLM judgment.
 
-**G6. Audit log.** Every confirmed draft is appended to `memory/active-drafts.md` with: timestamp, env, builderId, gross, every participant's name + percent + dollars, and the exact user confirmation token. Local-only, never pushed, user-readable plaintext.
+**G6. (RETIRED) Audit log.** Previously required appending each confirmed draft to `memory/active-drafts.md`. Retired: arrakis is the system of record; local mirroring added complexity without informational value. Use `list_my_builders` + `get_draft` when historical context is needed.
 
 **G7. Sanity rail — no silent rounding.** If the computed split cannot sum to exactly 100.00 (e.g. the prompt's numbers are internally contradictory, or the ratios produce a repeating decimal beyond 2dp), the agent stops and asks via `AskUserQuestion`. It must **not** silently round to force a fit. Acceptable remedies: ask the user to adjust one percentage, or explicitly ask whether to round up vs. down (with explicit options showing which participant absorbs the cent).
 
-**Clean-sum short-circuit**: if the raw percentages already sum to exactly `100.00` (e.g. "me 50 / him 30 / referral 20" = 100), skip the ACK gate (G2) — go straight to the final preview. The dual reconciliation (G3), raw JSON preview (G4), post-write verification (G5), and audit log (G6) still apply.
+**Clean-sum short-circuit**: if the raw percentages already sum to exactly `100.00` (e.g. "me 50 / him 30 / referral 20" = 100), skip the ACK gate (G2) — go straight to the final preview. The dual reconciliation (G3), raw JSON preview (G4), and post-write verification (G5) still apply.
 
 **Other commission rules worth knowing**:
 

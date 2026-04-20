@@ -3,9 +3,9 @@ You are helping the user **modify an existing draft** (transaction-builder). The
 ## Principle zero: context routing (load `memory/context-routing.md`)
 
 The draft you're editing is chosen by **context, not just the prompt**:
-1. Active draft in last 1–3 turns → that's the target.
+1. Active draft in last 1–3 turns (in-conversation context) → that's the target.
 2. Explicit UUID / short-hash → that's the target.
-3. Most-recent `create` / `update` row in `memory/active-drafts.md` <48h, if the user says "the last one" / "this draft" → that's the target.
+3. "the last one" / "this draft" → call `list_my_builders`, take the most-recent in-progress entry.
 4. Nothing matches → ASK which draft.
 
 Surface the resolved target in the parse summary (`Routing: update draft 64b1deb3 (active from this session)`) so the user can catch a misread.
@@ -23,7 +23,7 @@ Surface the resolved target in the parse summary (`Routing: update draft 64b1deb
 Same as `/create-transaction`:
 1. **Parse > fire in one turn.** No confirmation gate. Preview shows the before/after, then the tool call fires.
 2. **Ask only at money/classification/identity boundaries.** "Change commission to 5" is ambiguous ($5 flat vs 5%?) → ask. "Change commission to 5%" → fire.
-3. **Use memory + history.** `memory/active-drafts.md` has the draft's created-at context; `memory/user-patterns.md` has team/partner caches.
+3. **Use memory + live state.** `get_draft` is the source of truth for current values; `memory/user-patterns.md` has team/partner caches.
 
 ## Runbook
 
@@ -31,8 +31,8 @@ Same as `/create-transaction`:
 
 Input → builderId:
 - Explicit UUID in prompt → use it.
-- "the last draft" / "the current draft" → take the most-recent entry in `memory/active-drafts.md`.
-- "draft at 120 Main St" / "draft for the $200k sale" → grep `active-drafts.md` for matching entry; if multiple, ask.
+- "the last draft" / "the current draft" → call `list_my_builders(env, yentaId)`, take the most-recent in-progress entry.
+- "draft at 120 Main St" / "draft for the $200k sale" → call `list_my_builders`, filter by property.address; if multiple match, ask.
 - No match → ask for the builderId (one `AskUserQuestion`, free-text).
 
 ### 1. Fetch current state
@@ -61,7 +61,7 @@ Map the user's words to a granular tool call. The table below is exhaustive acro
 | "change year built to X" | `update_location` | Replay location with new `yearBuilt`. |
 | "change MLS to X" / "MLS is N/A" | `update_location` | Replay with new `mlsNumber`. |
 | "change the representation to BUYER / SELLER / DUAL / LANDLORD / TENANT" | `update_price_and_dates` AND `set_owner_agent_info` | Replay both; owner agent role must match new representation (BUYERS_AGENT / SELLERS_AGENT). |
-| "add a partner {name}" / "add co-agent {name}" | `search_agent_by_name` then `add_co_agent` | Resolve yentaId via known-agents cache or search. |
+| "add a partner {name}" / "add co-agent {name}" | `search_agent_by_name` then `add_co_agent` | Resolve yentaId via `user-patterns.md:learned_agents` first, then search. |
 | "remove partner {name}" / "remove co-agent" | `delete_co_agent` | Needs the coAgent's `participantId` from `get_draft.agentsInfo.coAgents[].id`. After delete, recompute commission splits (redistribute the removed co-agent's percent) via `compute_commission_splits` + `set_commission_splits` + `verify_draft_splits`. |
 | "add a referral to {name}" | `add_internal_referral` or `add_external_referral` (classify via the referral rules in `/create-transaction` step 2). |
 | "add transaction coordinator {name}" | `add_transaction_coordinator` |
@@ -106,18 +106,11 @@ After each write, call `get_draft` once to confirm the change landed (optional b
 
 Same rule as every other skill: scan the post-write response for `errors[]`, `builderErrors[]`, `transactionWarnings[]`. Surface with 🚨 / ⚠️ above the success line. Consult `memory/post-submit-warnings.md`.
 
-### 6. Return the URL + audit
+### 6. Return the URL
 
 Same URL template as `/create-transaction`:
 
 > **Review and submit:** https://bolt.{env}realbrokerage.com/transaction/create/{builderId}
-
-Append an audit entry to `memory/active-drafts.md`:
-- `timestamp: {now}`
-- `action: update`
-- `builder_id: {id}`
-- `changed_fields: [list of field paths]`
-- `before / after: {diff}`
 
 ## What you never do
 

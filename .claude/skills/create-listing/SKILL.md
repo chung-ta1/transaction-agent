@@ -11,7 +11,7 @@ You are helping the user create a Real Brokerage **listing** from a plain-Englis
 
 - *"create listing"* with an active LISTING draft in focus → route to `/submit-draft` on that draft (Bolt's "Create Listing" button is a submit action).
 - *"create listing"* in a fresh session → this skill.
-- *"create another listing for the same property"* → this skill, but reuse address/year-built/MLS from the matching `active-drafts.md` entry silently.
+- *"create another listing for the same property"* → this skill, but call `list_my_builders` + `get_draft` to find the matching prior listing and reuse address/year-built/MLS silently.
 
 **When to trigger:** user says "create a listing", "new listing", "list this property", "add listing for ...", or similar — AND no active listing draft is the focus of the session.
 
@@ -29,7 +29,7 @@ You are helping the user create a Real Brokerage **listing** from a plain-Englis
 ### 0. Pre-flight (parallel)
 
 Fire these in one turn:
-- Read `memory/user-preferences.md`, `user-patterns.md`, `known-agents.md`, `transaction-rules.md`.
+- Read `memory/user-preferences.md`, `user-patterns.md`, `transaction-rules.md`.
 - `pre_flight(env, userPrompt)` — auth + ZIP extraction in one call.
 
 ### 1. Parse the prompt — build a DraftAnswers-like object
@@ -92,7 +92,7 @@ If the listing will be a dual-rep deal later OR the user partners with another a
 
 ### 6. Preview + fire (same turn) + audit log
 
-Same G4/G5/G6 pattern as transactions — emit the preview text AND fire `finalize_draft` in the same assistant turn. No confirmation gate. Preview shows:
+Same G4/G5 pattern as transactions — emit the preview text AND fire `finalize_draft` in the same assistant turn. No confirmation gate. Preview shows:
 ```
 Listing — {env} · builder {short-id}
 Property:            {full address}
@@ -110,7 +110,7 @@ After the finalize / submit tool returns, scan the response for `errors[]`, `bui
 
 ### 6.6. History reuse
 
-If the prompt references "same property", "same team", "like last time", "another listing at X", or similar — check `memory/active-drafts.md` for the most recent matching entry and reuse its address, yearBuilt, mlsNumber, teamId silently. Mark the reused fields with `~` in the parse summary so the user can catch a misidentified match.
+If the prompt references "same property", "same team", "like last time", "another listing at X", or similar — call `list_my_builders(env, yentaId, type="LISTING")` and `get_draft` on the most recent matching entry to reuse its address, yearBuilt, mlsNumber, teamId silently. Mark the reused fields with `~` in the parse summary so the user can catch a misidentified match.
 
 ### 7. Return the URL
 

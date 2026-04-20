@@ -88,7 +88,7 @@ Optional follow-up: user can say "submit it" → `submit_draft`.
 
 ### User: "resume the draft" or "continue where I left off"
 1. `pre_flight`
-2. Read `memory/active-drafts.md` for most recent in-flight builderId
+2. `list_my_builders(env, yentaId)` for most recent in-flight builderId
 3. `get_draft(env, builderId)` to fetch current state
 4. Compute delta: what's populated vs what's needed for submit
 5. Ask only about the delta
@@ -102,7 +102,7 @@ Optional follow-up: user can say "submit it" → `submit_draft`.
 
 ## State-inspection rule
 
-**Before creating anything new, check if it already exists.** If the user says "create a transaction for 123 Main St" and they're seller-side, first ask: is there already a listing for this address? Use `search_existing_listings` (when available) or `get_draft` against the most-recent builderId in `memory/active-drafts.md`.
+**Before creating anything new, check if it already exists.** If the user says "create a transaction for 123 Main St" and they're seller-side, first ask: is there already a listing for this address? Use `search_existing_listings` (when available) or `list_my_builders` + `get_draft` to check for an in-progress builder at that address.
 
 This prevents duplicates and lets the agent pick up mid-flow — e.g., if the previous session failed after creating the listing but before transitioning.
 

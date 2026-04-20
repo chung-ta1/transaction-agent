@@ -37,7 +37,7 @@ Same four as `/create-transaction`:
 
 1. **Quick** — smart defaults, batched questions, cached agent lookups.
 2. **Accurate** — financial document; never invent names, emails, amounts.
-3. **Painless** — memory-first (user-preferences, user-patterns, known-agents).
+3. **Painless** — memory-first (user-preferences, user-patterns incl. learned_agents).
 4. **Ask when ambiguous — never guess.** Names in the API are single strings ("Jane Smith") while the Bolt UI asks first/last separately. If the user's prompt says "referral to Jane" without a last name, ASK before sending "Jane" to arrakis (arrakis validates but lots of downstream reports filter by last name).
 
 ## One-shot endpoint — know this before anything else
@@ -54,7 +54,7 @@ One call, immediate submit. The resulting Transaction is live in arrakis the ins
 
 ### 0. Pre-flight (parallel, batched in one turn)
 
-- Read `memory/user-preferences.md`, `memory/user-patterns.md`, `memory/known-agents.md`, `memory/error-messages.md`.
+- Read `memory/user-preferences.md`, `memory/user-patterns.md`, `memory/error-messages.md`.
 - `pre_flight(env, userPrompt)` — returns auth + any postal codes from the prompt.
 
 If env isn't yet resolved, ask once with the standard team1/team2/.../play/stage options. Never offer prod.
@@ -108,7 +108,7 @@ Classification is **never silently defaulted**. The skill's whole advantage over
 **Emails**
 - External agent email is REQUIRED. Client email is OPTIONAL. If the prompt has only one email, ambiguity rule #4 fires: ask which party it belongs to.
 - **Look up before asking.** When you have the external agent's first+last name but no email, DO NOT offer a fabricated guess like `first.last@example.com` as an AskUserQuestion option. Instead:
-  1. Check `memory/known-agents.md` (and `external_agents:` sub-section if present) for a cached match.
+  1. Check `user-patterns.md:learned_agents` (match on first+last OR any `aliases[]` entry, env-scoped) for a cached match.
   2. If no cache hit, fire `search_agent_by_name(firstName, lastName)` to yenta.
   3. Present results back to the user:
      - **Exact match** → offer that email as the first option (recommended), plus "Different email — I'll supply".
@@ -228,11 +228,12 @@ Status:             Live in arrakis — review in Bolt
 
 If the user needs to add the payment info (skipped earlier), tell them: the transaction detail page has a "Referral" section where they can edit.
 
-### 7. Learn + audit
+### 7. Learn
 
-- `memory/active-drafts.md`: append a new YAML entry. Use `builder_type: REFERRAL_PAYMENT` so it's distinguishable from regular SALE transactions. Include `transaction_id`, `transaction_code`, `referral_id`, external-agent snapshot, amount, expectedCloseDate.
-- `memory/known-agents.md`: if the external agent is new, optionally cache their name/email/brokerage under an `external_agents:` key. Skip if the prompt framed them as a one-off.
+- External agents (non-Real brokers supplied free-text) are NOT written to `user-patterns.md:learned_agents` — that section is for yenta-resolved Real agents only. If the same external broker shows up repeatedly, the user can ask you to remember them explicitly.
 - `memory/user-preferences.md` / `memory/user-patterns.md`: nothing specific here — no new categorical defaults come out of this flow.
+
+(No local audit log. arrakis is the system of record — use `list_my_builders` / transaction detail API to look up past referral payments.)
 
 ## What you never do
 

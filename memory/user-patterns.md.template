@@ -40,9 +40,11 @@ teams: []
 
 typical_team_id: null
 
-frequent_partners: []
-
-frequent_referrals: []
+# Unified agent learning — name/alias → yentaId mappings plus recency ranking.
+# yenta owns email/status/brokerage; we re-fetch those on use (validate_agents
+# runs on every draft). Fields per entry: first_name, last_name, yenta_id, env,
+# aliases[], roles_seen[], use_count, last_used_at.
+learned_agents: []
 
 # Most-recently-used team (recency, NOT stability). Different from
 # `typical_team_id` which is the agent's stable default. The runbook prefers
@@ -55,7 +57,6 @@ last_used_team_id: null
 
 - Specific sale prices or commission amounts from past drafts
 - Specific commission split percentages
-- Dates of specific deals (those belong in `active-drafts.md`)
+- Dates of specific deals
 
-Those are either in `active-drafts.md` (financial audit log, append-only) or
-deliberately not cached at all.
+Those live in arrakis (system of record) — use `list_my_builders` + `get_draft` to retrieve them when needed.

@@ -7,7 +7,7 @@ This skill is for FILLING GAPS on an existing draft to reach submittable state. 
 - *"change {field}"* / *"update the draft"* / *"set {flag}"* (arbitrary edits, not gap-fill) → `/update-draft`.
 - *"submit the draft"* (no changes needed, just submit) → `/submit-draft`.
 
-Target draft resolution: active-session focus first, then explicit id, then most-recent `create` row in `active-drafts.md` within 48h.
+Target draft resolution: active-session focus first, then explicit id, then most-recent in-progress draft from `list_my_builders`.
 
 ## When to trigger
 
@@ -17,9 +17,9 @@ The user says any of: "resume the draft", "pick up where I left off", "finish th
 
 Fire these in a single assistant turn:
 
-- Read `memory/active-drafts.md` — the append-only audit log. The **most recent non-finalized entry** is usually the target. Each entry has `env`, `builderId`, `gross`, and the participants snapshot.
+- Call `list_my_builders(env, yentaId, limit=10)` — arrakis is the source of truth for unfinished drafts. Returns `{ builderId, type, createdAt, updatedAt, property }` per entry.
 - Read `memory/user-preferences.md` and `memory/user-patterns.md` to pick up user defaults.
-- If the user named a specific `builderId` in their prompt, use that and skip the log lookup.
+- If the user named a specific `builderId` in their prompt, use that and skip the `list_my_builders` lookup.
 - Call `verify_auth(env)` (non-blocking — returns immediately even if sign-in is still in progress).
 
 ## Identify the target draft
@@ -27,10 +27,10 @@ Fire these in a single assistant turn:
 Three cases:
 
 1. **User gave a builderId or env+builderId explicitly** → use it.
-2. **Log has exactly one in-flight draft** → use it; confirm in the preview.
-3. **Log has multiple candidates** → `AskUserQuestion` with up to 4 recent drafts as options (label: `{env} · ${gross} · {short-id} · {timestamp}`). User picks one.
+2. **`list_my_builders` returns exactly one in-flight draft** → use it; confirm in the preview.
+3. **`list_my_builders` returns multiple candidates** → `AskUserQuestion` with up to 4 recent drafts as options (label: `{type} · {property.address or short-id} · updated {updatedAt}`). User picks one.
 
-No log entry found and no builderId given → stop and ask the user to paste the builderId from Bolt.
+No in-flight drafts and no builderId given → stop and ask the user to paste the builderId from Bolt.
 
 ## Fetch current state
 
@@ -97,17 +97,6 @@ Same pattern as the create flow: emit the final preview (raw JSON + labeled huma
 ## Post-finalize warnings (mandatory)
 
 After `finalize_draft` / `get_draft` returns, scan the response for `errors[]`, `builderErrors[]`, `transactionWarnings[]`, `lifecycleState.state`. Surface any non-empty results with 🚨 / ⚠️ ABOVE the URL. Consult `memory/post-submit-warnings.md`.
-
-## Audit log
-
-Append a new `resume` entry to `memory/active-drafts.md` with:
-
-- `resumed_at: {iso}`
-- `resumed_from_entry: {original entry timestamp}`
-- `builderId`, `env`, `gross`, `participants`, `user_ack_token`
-- `verification: ok` (from `verify_draft_splits`)
-
-**Never edit the original entry.** The log is append-only.
 
 ## What you never do
 

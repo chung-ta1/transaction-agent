@@ -16,10 +16,9 @@ transaction-agent/
 ├── memory/                               # read + written by the agent
 │   ├── transaction-rules.md              # arrakis rulebook + accuracy stack
 │   ├── arrakis-pin.md                    # drift-check pin
-│   ├── user-preferences.md               # per-user smart defaults
-│   ├── known-agents.md                   # name → yentaId cache
-│   ├── error-messages.md                 # arrakis error → plain-English fix
-│   └── active-drafts.md                  # append-only audit log
+│   ├── user-preferences.md               # per-user smart defaults (identity, env, office)
+│   ├── user-patterns.md                  # typical_* categorical + learned_agents cache
+│   └── error-messages.md                 # arrakis error → plain-English fix
 ├── src/
 │   ├── index.ts                          # stdio bootstrap
 │   ├── server.ts                         # MCP tool registry

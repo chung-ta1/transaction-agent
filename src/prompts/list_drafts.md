@@ -2,7 +2,7 @@ You are helping the user see what drafts they have in flight — the read-only "
 
 ## Principle zero: context routing (load `memory/context-routing.md`)
 
-Read-only flow — no ambiguity on direction. But when the user follows up with a row number or says "that one", resolve against the list you just rendered, not against `active-drafts.md`. Session context from this turn wins.
+Read-only flow — no ambiguity on direction. When the user follows up with a row number or says "that one", resolve against the list you just rendered. Session context from this turn wins over any memory cache.
 
 **When to trigger:** user says "what drafts do I have", "list my drafts", "show my in-flight drafts", "what's pending", "any open drafts", "show me my last 10 drafts", "drafts I haven't submitted yet".
 
@@ -57,9 +57,9 @@ After the list, proactively offer shortcuts:
 
 When the user refers by row number in the next turn, resolve against this listed order.
 
-### 4. No writes, no audit entry
+### 4. No writes
 
-This is a read-only flow. Nothing to log in `memory/active-drafts.md`.
+Read-only flow — nothing to persist locally. arrakis is the source of truth.
 
 ## What you never do
 

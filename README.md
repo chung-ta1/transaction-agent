@@ -110,7 +110,7 @@ Everything below works as plain natural language in Claude. No slash required.
 
 > *"Create a transaction: I'm the buyer's agent, $500k sale at 123 Main St NYC 10025, 3% commission, my partner Tamir splits 60/40 with me."*
 
-Partner "Tamir" resolves from the `frequent_partners` cache on second use — no name search round-trip.
+Partner "Tamir" resolves from the `learned_agents` cache (in `user-patterns.md`) on second use — no name search round-trip.
 
 ### Sale — seller-side
 
@@ -156,7 +156,7 @@ Same endpoint, with `classification: OTHER`. Claude detects the sub-reason ("ter
 
 > *"Resume the last draft."*
 
-Claude reads `memory/active-drafts.md`, fetches the draft from arrakis, computes what's missing, asks only for those fields, and finalizes.
+Claude calls `list_my_builders` to find the most recent in-progress draft, fetches its current state, computes what's missing, asks only for those fields, and finalizes.
 
 ### Switch env for one run
 

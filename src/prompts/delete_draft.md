@@ -3,9 +3,9 @@ You are helping the user **delete a draft** — permanently remove an unsubmitte
 ## Principle zero: context routing (load `memory/context-routing.md`)
 
 The target draft is chosen by context:
-1. Active draft from last 1–3 turns → target.
+1. Active draft from last 1–3 turns (in-conversation context) → target.
 2. Explicit UUID / short-hash → target.
-3. Most-recent `create` row in `active-drafts.md` + user says "this draft" / "the last one" → target.
+3. "this draft" / "the last one" → call `list_my_builders`, take the most-recent in-progress entry.
 4. Multiple matches or nothing resolved → ASK.
 
 Also route differently by state:
@@ -24,7 +24,7 @@ Also route differently by state:
 ### 0. Resolve target draft
 
 - UUID in prompt → use it.
-- "the last draft" / "this draft" → most recent entry in `memory/active-drafts.md`.
+- "the last draft" / "this draft" → call `list_my_builders(env, yentaId)`, take the most-recent in-progress entry. If none, ask.
 - Ambiguity → ask.
 
 ### 1. Fetch current state
@@ -61,22 +61,9 @@ After success, tell the user:
 - If this was `builtFromTransactionId`-linked → *"The parent listing `569a986d` is still live in LISTING_ACTIVE. Say 'delete the listing too' if you want me to terminate it as well, or leave it as-is to create a new transaction from it later."*
 - If there were active referrals / co-agents / commissions attached, those go with the draft (cascade).
 
-### 4. Audit log
+### 4. No local log
 
-Append an `action: delete` entry to `memory/active-drafts.md`:
-
-```yaml
----
-timestamp: {iso}
-action: delete
-env: {env}
-builder_id: {id}
-property: "{full address}"
-built_from_transaction_id: {listingId or null}
-reason: "{user's words, if given}"
-```
-
-Never remove or modify the original `action: create` entry. The audit is append-only.
+arrakis's `DELETE` is the audit trail. Don't mirror locally.
 
 ## What you never do
 

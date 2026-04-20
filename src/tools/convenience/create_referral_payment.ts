@@ -1,5 +1,3 @@
-import { appendFile } from "node:fs/promises";
-import { join } from "node:path";
 import { z } from "zod";
 import { defineTool, fail, ok, type ToolResult } from "../Tool.js";
 import { envSchema, stateOrProvinceSchema } from "../../types/schemas.js";
@@ -9,7 +7,6 @@ import type { ReferralPaymentRequest } from "../../services/ReferralPaymentApi.j
 
 const PLACEHOLDER_CLIENT_NAME_REGEX = /\b(unknown|n\/a|na|tbd|no\s+client|placeholder)\b/i;
 const AMOUNT_REQUIRING_EXPLICIT_DATE = 1000;
-const AUDIT_LOG_PATH = "memory/active-drafts.md";
 
 /**
  * Create a Real Brokerage referral-payment transaction via
@@ -177,28 +174,6 @@ export const createReferralPayment = defineTool({
         transaction,
       });
 
-      // Tool-side audit log write — deterministic, no runbook-prose dependency.
-      // Prior to this, the skill said "append to active-drafts.md" at step 7
-      // and the LLM skipped it on ca181852 (2026-04-20). Tools are reliable;
-      // skill prose is not.
-      if (transactionId) {
-        await appendAuditLog({
-          transactionId,
-          transactionCode: response.transaction?.code,
-          referralId: response.referral?.id,
-          env,
-          classification: classification ?? "REFERRAL",
-          externalAgentName: rest.externalAgentName,
-          externalAgentEmail: rest.externalAgentEmail,
-          externalAgentBrokerage: rest.externalAgentBrokerage,
-          clientName: rest.clientName,
-          amount,
-          currency: expectedReferralAmount.currency,
-          expectedCloseDate: rest.expectedCloseDate,
-          systemModifications,
-        });
-      }
-
       return ok({
         transactionId,
         referralId: response.referral?.id,
@@ -257,51 +232,6 @@ function diffReferralPaymentSystemModifications(args: {
     });
   }
   return out;
-}
-
-async function appendAuditLog(entry: {
-  transactionId: string;
-  transactionCode: string | undefined;
-  referralId: string | undefined;
-  env: string;
-  classification: string;
-  externalAgentName: string;
-  externalAgentEmail: string;
-  externalAgentBrokerage: string;
-  clientName: string;
-  amount: number;
-  currency: string;
-  expectedCloseDate: string;
-  systemModifications: Array<{ field: string; note: string }>;
-}): Promise<void> {
-  const now = new Date().toISOString();
-  const yaml = [
-    `---`,
-    `timestamp: ${now}`,
-    `env: ${entry.env}`,
-    `transaction_id: ${entry.transactionId}`,
-    entry.transactionCode ? `transaction_code: ${entry.transactionCode}` : undefined,
-    entry.referralId ? `referral_id: ${entry.referralId}` : undefined,
-    `builder_type: REFERRAL_PAYMENT`,
-    `classification: ${entry.classification}`,
-    `external_agent: "${entry.externalAgentName} · ${entry.externalAgentEmail} · ${entry.externalAgentBrokerage}"`,
-    `client_name: "${entry.clientName}"`,
-    `amount: {amount: "${entry.amount.toFixed(2)}", currency: ${entry.currency}}`,
-    `expected_close_date: "${entry.expectedCloseDate}"`,
-    entry.systemModifications.length > 0
-      ? `system_modifications:\n${entry.systemModifications
-          .map((m) => `  - field: ${m.field}\n    note: ${JSON.stringify(m.note)}`)
-          .join("\n")}`
-      : undefined,
-  ]
-    .filter((line) => line !== undefined)
-    .join("\n");
-  try {
-    await appendFile(join(process.cwd(), AUDIT_LOG_PATH), `\n${yaml}\n`, "utf-8");
-  } catch {
-    // Non-fatal: audit log write failing shouldn't break the tool return.
-    // The error surfaces on stderr via the usual MCP logging.
-  }
 }
 
 function asNullableString(v: unknown): string | undefined {

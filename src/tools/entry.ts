@@ -92,7 +92,7 @@ export const startResumeDraft = defineTool({
     builderId: z
       .string()
       .optional()
-      .describe("Optional: the builderId the user mentioned. If omitted, the runbook checks memory/active-drafts.md for the most recent unfinished draft."),
+      .describe("Optional: the builderId the user mentioned. If omitted, the runbook calls `list_my_builders` to find the user's most recent unfinished draft from arrakis."),
   }),
   async handler({ builderId }): Promise<
     ToolResult<{ runbook: string; builderId?: string; next: string }>

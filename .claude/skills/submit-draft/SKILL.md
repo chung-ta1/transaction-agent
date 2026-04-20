@@ -9,7 +9,7 @@ You are helping the user **submit a draft** (promote a transaction-builder to a 
 
 ## Principle zero: context routing (load `memory/context-routing.md`)
 
-**"Create transaction" from Bolt's review-page button label maps to THIS skill.** The button is a submit action mis-labeled as create. When a user says *"create transaction"* and there's an active draft in the last 1–3 turns or in `memory/active-drafts.md` <48h, they mean submit that draft — route here, not to `/create-transaction`.
+**"Create transaction" from Bolt's review-page button label maps to THIS skill.** The button is a submit action mis-labeled as create. When a user says *"create transaction"* and there's an active draft in the last 1–3 turns (in-conversation context) or an in-progress draft returned by `list_my_builders`, they mean submit that draft — route here, not to `/create-transaction`.
 
 **When to trigger:** user says "submit draft X", "finalize", "send it", "make it official", "submit my last draft", **OR "create transaction"** with an active draft in the session, or references a builderId with a submit intent.
 
@@ -24,8 +24,9 @@ You are helping the user **submit a draft** (promote a transaction-builder to a 
 ### 0. Resolve target draft
 
 - UUID in prompt → use it.
-- "the last draft" / "the one I just made" → take the most-recent `action: create` row in `memory/active-drafts.md`.
-- Address / amount reference → grep `active-drafts.md` for match; ask if multiple.
+- Active draft from the current conversation's last 1–3 turns → use that builderId.
+- "the last draft" / "the one I just made" / "my last draft" → call `list_my_builders(env, yentaId, limit=5)`, pick the most-recent in-progress entry. If arrakis returns nothing, ask the user for the builderId.
+- Address / amount reference → call `list_my_builders`, filter candidates; ask if multiple match.
 - No match → ask for the builderId.
 
 ### 1. Fetch current state (mandatory)
@@ -87,10 +88,6 @@ Show the live transaction (not the draft). Template:
 For a listing, the Bolt URL is:
 
 > **View listing:** https://bolt.{env}realbrokerage.com/listing/{listingId}
-
-### 6. Audit log
-
-Append an `action: submit` entry to `memory/active-drafts.md` linking the builderId to the resulting transactionId/listingId with the lifecycleState.
 
 ## What you never do
 

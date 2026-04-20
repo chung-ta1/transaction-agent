@@ -33,7 +33,7 @@ export const prompts: PromptDef[] = [
   {
     name: "resume_draft",
     description:
-      "Pick up a half-finished draft transaction from memory/active-drafts.md (or a user-supplied builderId), fill in what's missing, and finalize — without overwriting fields that are already correct.",
+      "Pick up a half-finished draft transaction (via a user-supplied builderId, or `list_my_builders` to find the most recent unfinished one), fill in what's missing, and finalize — without overwriting fields that are already correct.",
     file: join(__dirname, "resume_draft.md"),
   },
   {

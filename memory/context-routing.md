@@ -8,7 +8,7 @@ Read in this order and stop at the first decisive signal:
 
 1. **Current session focus.** What draft / transaction / listing are we actively discussing in the last 1–3 turns? If the user's message is ambiguous but references "this", "that draft", "it", or a verb adjacent to the current focus — the focus is the subject.
 2. **Explicit identifiers.** A UUID or short-hash (`64b1deb3`, `64b1deb3-b4e8-…`) in the prompt. Overrides session focus.
-3. **Recent history from `memory/active-drafts.md`.** The most recent `create` / `update` rows within the last 48 hours. "The last draft", "my recent draft", "the $200k one" all resolve against this.
+3. **Recent history from arrakis via `list_my_builders`.** "The last draft", "my recent draft", "the $200k one" all resolve against in-progress drafts returned by the API (sorted by `updatedAt`). arrakis is the source of truth; there is no local mirror.
 4. **Learned patterns from `memory/user-patterns.md`.** Typical env, typical team, typical year built, typical representation side, frequent partners. Use for silent defaulting, never for conflict resolution.
 5. **Prompt keywords.** Last resort. If nothing above resolves, fall back to literal phrase matching.
 
@@ -22,8 +22,8 @@ When steps 1–3 conflict with step 5 — **steps 1–3 win.** Keywords lie; con
 |---|---|---|
 | Active draft under discussion in last 3 turns | Submit that draft | `/submit-draft` |
 | Bolt "Create Transaction" button mentioned in the same session | Submit that draft (button = submit) | `/submit-draft` |
-| Fresh session, no draft in `active-drafts.md` <48h | Create a new draft | `/create-transaction` |
-| Fresh session, but `active-drafts.md` has a matching draft (address/amount match) | ASK once: "Submit existing or create new?" | — |
+| Fresh session, `list_my_builders` returns no in-progress drafts | Create a new draft | `/create-transaction` |
+| Fresh session, but `list_my_builders` returns a matching draft (address match) | ASK once: "Submit existing or create new?" | — |
 | Prompt explicitly says "a new transaction" / "another one" / "fresh draft" | Create new, regardless of context | `/create-transaction` |
 | Prompt explicitly says "submit" / "send" / "ship" / "finalize" | Submit, regardless of context | `/submit-draft` |
 
@@ -55,7 +55,7 @@ When steps 1–3 conflict with step 5 — **steps 1–3 win.** Keywords lie; con
 
 | Context | Resolution |
 |---|---|
-| `user-patterns.md:frequent_partners` has exact-match `first_name + last_name` <30d fresh | Use cached yentaId silently |
+| `user-patterns.md:learned_agents` has exact-match `first_name + last_name` (or matching alias) <30d fresh | Use cached yentaId silently |
 | Nickname hit in cache | **DANGER** — nicknames can be wrong (see Tamir/Chugn incident). Re-verify via `search_agent_by_name` before using. |
 | No cache hit | `search_agent_by_name` |
 
@@ -85,7 +85,7 @@ Ambiguity that warrants an `AskUserQuestion`:
 2. **Classification when silent.** REFERRAL vs OTHER (Non-Referral Payment) when the prompt gives zero signal either way.
 3. **Identity collision.** Two people with the same first name in `search_agent_by_name` results; `team1` when env isn't resolved; a user prompt like "I'm not pwadmin".
 4. **Destructive action with ambiguous target.** "Delete the draft" when multiple drafts match.
-5. **Create-vs-submit ambiguity.** Fresh session + prompt matches an existing draft in `active-drafts.md`.
+5. **Create-vs-submit ambiguity.** Fresh session + prompt matches an existing in-progress draft returned by `list_my_builders`.
 
 Ambiguity that does NOT warrant a question:
 
