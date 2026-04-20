@@ -24,7 +24,7 @@ The user says any of: "resume the draft", "pick up where I left off", "finish th
 
 Fire these in a single assistant turn:
 
-- Call `list_my_builders(env, yentaId, limit=10)` — arrakis is the source of truth for unfinished drafts. Returns `{ builderId, type, createdAt, updatedAt, property }` per entry.
+- Call `list_my_builders(env, yentaId, limit=10)` — arrakis is the source of truth for unfinished drafts. Returns a summary per entry: `{ id, builderType, createdAt, updatedAt, address, dealType, representationType, salePrice, grossCommission, yearBuilt, mlsNumber, teamId, builtFromTransactionId }`. For the full draft body (participants, commission splits, ledger items), call `get_draft(env, builderId)` on the row you pick.
 - Read `memory/user-preferences.md` and `memory/user-patterns.md` to pick up user defaults.
 - If the user named a specific `builderId` in their prompt, use that and skip the `list_my_builders` lookup.
 - Call `verify_auth(env)` (non-blocking — returns immediately even if sign-in is still in progress).
