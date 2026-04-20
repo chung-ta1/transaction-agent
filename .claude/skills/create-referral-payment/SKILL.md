@@ -87,12 +87,23 @@ Extraction rules specific to this flow (overrides any general rules):
 - If the prompt says "another Real agent" or names someone at Real, this is the wrong flow — route to internal-referral or transaction-add-referral; see "When NOT to trigger" above.
 
 **Classification (REFERRAL vs OTHER)** — critical, applies ambiguity-rule #4
-- Strong OTHER signals: "termination fee", "BPO", "Broker Price Opinion", "spiff", "bonus", "consulting fee", "expert witness", "licensed service that isn't a deal", "no client involved".
-- Strong REFERRAL signals: "referred a client", "hand-off", "{agent} sent me a buyer/seller", "got a lead from", "outside brokerage closed my client".
-- Ambiguous (ASK via `AskUserQuestion`): "payment from another brokerage" alone, "commission from {agent}" alone, anything that doesn't clearly name the underlying activity.
-- When OTHER: surface the reason ("termination fee", "BPO", …) in `comments` so the record is self-documenting.
-- When the prompt says "Non-Referral Payment" or "Non Referral Payment" verbatim → classification=OTHER, no ask needed.
-- Default to omitting the field (= REFERRAL) ONLY when the prompt unambiguously describes a traditional client referral.
+
+Classification is **never silently defaulted**. The skill's whole advantage over Bolt's UI is that it CAN classify correctly (Bolt's UI hides the selector on envs where `US_EXTERNAL_REFERRALS` is off, and always sends REFERRAL). Silently defaulting to REFERRAL re-introduces the exact limitation we built the skill to bypass. Misclassification pollutes 1099 reporting and referral-vs-non-referral analytics on Real's books.
+
+**Strict rules:**
+
+- **Allow-list for silent REFERRAL** — omit the `classification` field (letting arrakis default to REFERRAL) ONLY when the user's prompt contains one of these verbatim signals:
+  - `"referred a client"` / `"client referral"`
+  - `"hand-off"` / `"handed off a buyer"` / `"handed off a seller"`
+  - `"{agent} sent me a buyer"` / `"sent me a seller"` / `"sent a lead"`
+  - `"got a lead from"` / `"received a referral from"`
+  - `"outside brokerage closed my client"`
+
+- **Explicit OTHER** — pass `classification: "OTHER"` when the prompt contains: "termination fee", "BPO", "Broker Price Opinion", "spiff", "bonus", "consulting fee", "expert witness", "licensed service that isn't a deal", "no client involved", "non-referral payment", "non referral payment". Surface the reason in `comments` so the record is self-documenting.
+
+- **Everything else → `AskUserQuestion`.** Phrases like "payment from another brokerage", "commission from {agent}", or an unlabeled amount with just a person's name don't pass the allow-list. The skill asks the user which kind it is; no silent judgment call.
+
+- **Tool-side gate (defense in depth):** `create_referral_payment.ts` rejects the call with `PLACEHOLDER_CLIENT_ON_REFERRAL` when `clientName` matches `/unknown|n\/a|tbd|no\s+client|placeholder/i` AND `classification` is REFERRAL (or omitted). A missing/unknown client is semantically incoherent with "a specific client was referred" — the tool won't fire and the skill has to resolve.
 
 **Emails**
 - External agent email is REQUIRED. Client email is OPTIONAL. If the prompt has only one email, ambiguity rule #4 fires: ask which party it belongs to.

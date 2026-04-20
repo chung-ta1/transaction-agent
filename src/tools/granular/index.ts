@@ -30,6 +30,7 @@ import {
   transitionListing,
 } from "./lifecycle.js";
 import { preFlight } from "./pre_flight.js";
+import { validateAgents } from "./validate_agents.js";
 import { validateDraftCompleteness } from "./validate_draft_completeness.js";
 import { verifyAuth } from "./verify_auth.js";
 import { signOut } from "./sign_out.js";
@@ -42,6 +43,7 @@ export const granularTools: Tool[] = [
   // pre-flight
   preFlight,
   validateDraftCompleteness,
+  validateAgents,
   verifyAuth,
   signOut,
   // search

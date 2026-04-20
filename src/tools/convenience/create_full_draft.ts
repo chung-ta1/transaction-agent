@@ -40,6 +40,7 @@ import { ApiError } from "../../services/BaseApi.js";
  */
 
 const STAGES = [
+  "validate_agents",
   "initialize",
   "location",
   "price_dates",
@@ -160,19 +161,61 @@ export const createFullDraft = defineTool({
       ),
     fmls: fmlsInfoSchema.optional().describe("Georgia only."),
   }),
-  async handler(args, { arrakis }): Promise<ToolResult<unknown>> {
+  async handler(args, { arrakis, yenta }): Promise<ToolResult<unknown>> {
     const completed: Stage[] = [];
     let builderId: string | undefined;
     const rep = args.priceAndDates.representationType;
 
-    if (rep === "DUAL") {
-      return fail(
-        "DUAL representation isn't yet handled by create_full_draft. Fall back to the granular chain: create_draft_with_essentials + add_partner_agent (side=DUAL) + set_commission_splits per side + finalize_draft.",
-        { code: "NOT_IMPLEMENTED_DUAL" },
-      );
-    }
-
     try {
+      // ---- 0. validate_agents ----
+      // Lint every partner + referral yentaId for ACTIVE status BEFORE any
+      // arrakis write. Catches CANDIDATE / INACTIVE / REJECTED at turn zero
+      // instead of stage 6 of 12 (see c99ce417 2026-04-20).
+      const agentIdsToCheck: string[] = [];
+      for (const p of args.partners) {
+        if (p.kind === "internal" && p.agentId) agentIdsToCheck.push(p.agentId);
+      }
+      if (args.referral?.kind === "internal" && args.referral.agentId) {
+        agentIdsToCheck.push(args.referral.agentId);
+      }
+      if (agentIdsToCheck.length > 0) {
+        const issues: Array<{ yentaId: string; status?: string; reason: string }> = [];
+        await Promise.all(
+          agentIdsToCheck.map(async (id) => {
+            try {
+              const agent = await yenta.getAgent(args.env, id);
+              if (!agent) {
+                issues.push({ yentaId: id, reason: `yentaId ${id} not found (404)` });
+                return;
+              }
+              const status = agent.agentStatus;
+              if (status && status !== "ACTIVE") {
+                const name = `${agent.firstName ?? ""} ${agent.lastName ?? ""}`.trim() || id;
+                issues.push({
+                  yentaId: id,
+                  status,
+                  reason: `${name} is ${status} in yenta — arrakis blocks non-ACTIVE agents from being added to a transaction`,
+                });
+              }
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              issues.push({ yentaId: id, reason: `yenta lookup failed: ${message}` });
+            }
+          }),
+        );
+        if (issues.length > 0) {
+          return fail(
+            `One or more agents can't be added to the draft: ${issues.map((i) => i.reason).join("; ")}`,
+            {
+              code: "AGENT_STATUS_INVALID",
+              body: { builderId: undefined, completedSteps: completed, nextStage: "validate_agents", issues },
+            },
+          );
+        }
+      }
+      completed.push("validate_agents");
+
+      // ---- 1. initialize ----
       builderId = await arrakis.initializeDraft(args.env, args.type);
       completed.push("initialize");
 
@@ -193,7 +236,34 @@ export const createFullDraft = defineTool({
         officeId: args.owner.officeId,
         ...(args.owner.teamId ? { teamId: args.owner.teamId } : {}),
       });
+
+      // For DUAL: register the owner a second time as BUYERS_AGENT so they
+      // satisfy arrakis's "≥1 agent with positive commission on both sides"
+      // rule. Sequential — never fire this in parallel with price/dates or
+      // buyer/seller updates (the c48855ad race on 2026-04-20 produced 4
+      // duplicate owner participants because arrakis auto-created a slot
+      // during the rep flip while we were also addCoAgent-ing).
+      if (rep === "DUAL") {
+        await arrakis.addCoAgent(args.env, builderId, {
+          agentId: args.owner.yentaId,
+          role: "BUYERS_AGENT",
+          receivesInvoice: false,
+        });
+      }
       completed.push("owner");
+
+      // For DUAL-with-partners, splits get ambiguous (which side does the
+      // partner belong on, and how do they share across two roles?). Punt
+      // cleanly to the granular chain rather than guess.
+      if (rep === "DUAL" && args.partners.length > 0) {
+        return fail(
+          "DUAL representation with partners isn't yet handled by create_full_draft — splits are ambiguous (which side does each partner work, and how does their ratio apply across both roles?). Use the granular chain: add each partner via add_partner_agent with side=DUAL (registers twice) or explicit side, then set_commission_splits per participantId.",
+          {
+            code: "NOT_IMPLEMENTED_DUAL_WITH_PARTNERS",
+            body: { builderId, completedSteps: completed, nextStage: "partners" },
+          },
+        );
+      }
 
       const defaultPartnerSide = inferOwnerRole(rep);
       for (const p of args.partners) {
@@ -269,19 +339,52 @@ export const createFullDraft = defineTool({
       }
       completed.push("resolve_participants");
 
-      const agentInputs: Array<{ key: string; displayName: string; rawRatio: number }> = [
-        { key: ownerParticipantId, displayName: "owner", rawRatio: args.owner.ratio },
-      ];
-      for (let i = 0; i < args.partners.length; i++) {
-        const p = args.partners[i];
-        const match = coAgentParticipants.find((c) => c.agentId === p.agentId);
-        if (!match) {
+      const agentInputs: Array<{ key: string; displayName: string; rawRatio: number }> = [];
+      if (rep === "DUAL") {
+        // Solo DUAL: owner has two participantIds — SELLERS_AGENT (from
+        // ownerAgent slot) and BUYERS_AGENT (from the co-agent we added
+        // above). Split owner's ratio 50/50 across both so that per-side
+        // commission amounts match listingCommission + saleCommission.
+        const ownerBuyerSide = coAgentParticipants.find(
+          (c) => c.agentId === args.owner.yentaId && c.role === "BUYERS_AGENT",
+        );
+        if (!ownerBuyerSide) {
           return fail(
-            `Couldn't match partner agent ${p.agentId} to a co-agent participant in the draft.`,
-            { code: "PARTNER_MATCH_FAILED", body: { builderId, completedSteps: completed } },
+            "DUAL draft: couldn't locate the owner's BUYERS_AGENT participant record after adding it — arrakis may not have persisted the co-agent write.",
+            {
+              code: "DUAL_OWNER_BUYER_PARTICIPANT_MISSING",
+              body: { builderId, completedSteps: completed, nextStage: "compute_splits" },
+            },
           );
         }
-        agentInputs.push({ key: match.id, displayName: `partner-${i}`, rawRatio: p.ratio });
+        const halfRatio = args.owner.ratio / 2;
+        agentInputs.push({
+          key: ownerParticipantId,
+          displayName: "owner (seller-side)",
+          rawRatio: halfRatio,
+        });
+        agentInputs.push({
+          key: ownerBuyerSide.id,
+          displayName: "owner (buyer-side)",
+          rawRatio: halfRatio,
+        });
+      } else {
+        agentInputs.push({
+          key: ownerParticipantId,
+          displayName: "owner",
+          rawRatio: args.owner.ratio,
+        });
+        for (let i = 0; i < args.partners.length; i++) {
+          const p = args.partners[i];
+          const match = coAgentParticipants.find((c) => c.agentId === p.agentId);
+          if (!match) {
+            return fail(
+              `Couldn't match partner agent ${p.agentId} to a co-agent participant in the draft.`,
+              { code: "PARTNER_MATCH_FAILED", body: { builderId, completedSteps: completed } },
+            );
+          }
+          agentInputs.push({ key: match.id, displayName: `partner-${i}`, rawRatio: p.ratio });
+        }
       }
       const computed = computeCommissionSplits({
         grossCents: dollarsToCents(args.commission.gross.amount),
@@ -350,6 +453,17 @@ export const createFullDraft = defineTool({
       }
       completed.push("finalize");
 
+      // systemModifications: diff what we asked for vs what arrakis committed.
+      // Closes the "how is this selected?" question the user asked on
+      // ca181852 (team auto-switched, TC auto-added).
+      const finalDraft = (await arrakis.getDraft(args.env, builderId)) as Record<string, unknown>;
+      const systemModifications = diffSystemModifications({
+        requestedTeamId: args.owner.teamId,
+        requestedOwnerYentaId: args.owner.yentaId,
+        requestedPartnerIds: args.partners.map((p) => p.agentId),
+        draft: finalDraft,
+      });
+
       return ok({
         builderId,
         draftUrl: buildDraftUrl(args.env, builderId),
@@ -359,6 +473,7 @@ export const createFullDraft = defineTool({
         gross: computed.gross,
         renormalized: computed.renormalized,
         payerSet,
+        systemModifications,
         participants: {
           owner: { participantId: ownerParticipantId, yentaId: args.owner.yentaId },
           partners: coAgentParticipants.map((c) => ({
@@ -394,9 +509,60 @@ export const createFullDraft = defineTool({
   },
 });
 
+/**
+ * After create + finalize, diff what the caller requested against what
+ * arrakis committed. Team and transactionCoordinator are the two fields
+ * arrakis is known to override post-POST based on server-side rules
+ * (user's team memberships, default TC assignments). Surfacing these as
+ * a structured list lets the skill explain "arrakis changed X" in plain
+ * English rather than leaving the user to spot the differences in Bolt.
+ */
+function diffSystemModifications(args: {
+  requestedTeamId: string | undefined;
+  requestedOwnerYentaId: string;
+  requestedPartnerIds: string[];
+  draft: Record<string, unknown>;
+}): Array<{ field: string; requested: unknown; actual: unknown; note: string }> {
+  const out: Array<{ field: string; requested: unknown; actual: unknown; note: string }> = [];
+  const agentsInfo = args.draft?.agentsInfo as Record<string, unknown> | undefined;
+  const actualTeamId = asString(agentsInfo?.teamId);
+  if (args.requestedTeamId && actualTeamId && actualTeamId !== args.requestedTeamId) {
+    out.push({
+      field: "teamId",
+      requested: args.requestedTeamId,
+      actual: actualTeamId,
+      note: "arrakis reassigned the transaction's team. Commission splits/caps will apply per the new team's config. Likely source: the owner belongs to that team in yenta, and arrakis auto-prefers it over the requested teamId.",
+    });
+  }
+  const tcs = (args.draft?.transactionCoordinators ?? []) as Array<{ yentaId?: string; id?: string; firstName?: string; lastName?: string }>;
+  if (Array.isArray(tcs) && tcs.length > 0) {
+    out.push({
+      field: "transactionCoordinators",
+      requested: [],
+      actual: tcs.map((t) => ({ id: t.id, name: `${t.firstName ?? ""} ${t.lastName ?? ""}`.trim() })),
+      note: `arrakis auto-attached ${tcs.length} Transaction Coordinator(s). Likely source: the owner's team or office has a default TC; arrakis pulls them onto new transactions. Remove in Bolt's "Other Participants" section if unwanted.`,
+    });
+  }
+  const ownerAgents = (agentsInfo?.ownerAgent ?? []) as Array<{ yentaId?: string; agentId?: string }>;
+  const actualOwnerYentaId = ownerAgents[0]?.yentaId ?? ownerAgents[0]?.agentId;
+  if (actualOwnerYentaId && actualOwnerYentaId !== args.requestedOwnerYentaId) {
+    out.push({
+      field: "ownerAgent.yentaId",
+      requested: args.requestedOwnerYentaId,
+      actual: actualOwnerYentaId,
+      note: "arrakis changed the owner agent. Unexpected — investigate.",
+    });
+  }
+  return out;
+}
+
+function asString(v: unknown): string | undefined {
+  return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+
 function inferOwnerRole(rep: string): "BUYERS_AGENT" | "SELLERS_AGENT" | "TENANT_AGENT" {
   if (rep === "BUYER") return "BUYERS_AGENT";
-  if (rep === "SELLER" || rep === "LANDLORD") return "SELLERS_AGENT";
+  if (rep === "SELLER" || rep === "LANDLORD" || rep === "DUAL") return "SELLERS_AGENT";
   if (rep === "TENANT") return "TENANT_AGENT";
   return "BUYERS_AGENT";
 }

@@ -227,6 +227,23 @@ For any name still unresolved, fire `search_agent_by_name` for **all** of them *
 - **>1 matches** → collect for the disambiguation batch (step 5).
 - **0 matches** → for a referral, collect the "external?" question for step 5. For an owner/partner, collect a "typo?" question.
 
+**Never fabricate an email to use as an `AskUserQuestion` option.** When you have a first+last but need the email:
+1. Search `known-agents.md` and yenta **first** (as above).
+2. If **exactly 1 ACTIVE match** → offer that email as the FIRST option in any confirmation AskUserQuestion ("Use the cached email X, or supply a different one?").
+3. If **>1 ACTIVE matches** → show each as a button with identifying info (office, email).
+4. If **0 matches** (or only CANDIDATE/INACTIVE) → say "no yenta match found" and ask the user to supply the email directly; never present a fabricated `first.last@example.com`-style guess.
+
+Verified bug 2026-04-20 (`create-referral-payment` flow for "Chung joyner"): the agent offered `chung.joyner@example.com` as a guess button when yenta actually had a match at `chung.ta+pikipazax@therealbrokerage.com`. User pushed back *"you have first and last name. why not look up and verify with the user?"* Same rule applies here.
+
+### 3b. Agent-status pre-flight (agent-validity gate)
+
+After the caches + yenta search resolve names to yentaIds, call `validate_agents(env, [all partner + referral yentaIds])` **before** step 4 (parse summary) and step 7 (commission math).
+
+- If the tool returns `ok: true` → continue.
+- If `issues[]` is non-empty → surface the status problem (e.g. "James Anderson is CANDIDATE in yenta — arrakis won't accept them as a referral") and re-ask the user for an alternative. Don't attempt the create; `create_full_draft` runs the same check server-side and fails cleanly at stage 0, but catching it at step 3b is faster and gives the user a better error.
+
+`create_full_draft` ALSO runs `validate_agents` internally as stage 0 of 13 — the skill-level call is belt-and-suspenders. When the user is using the granular chain, it's the only gate.
+
 ### 3a. Inconsistent-sum interpretation gate (RUNS BEFORE THE PARSE SUMMARY)
 
 If the user's raw commission percentages don't sum to exactly `100.00`, **STOP**. Do not emit the parse summary yet. Do not silently renormalize. Do not show one "standard" interpretation as a done deal. The parse summary must never present guessed math the user hasn't chosen.
