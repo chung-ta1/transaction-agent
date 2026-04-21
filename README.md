@@ -9,6 +9,7 @@
 | `/create-transaction` | Draft a sale or lease — buyer-side, seller-side, or DUAL. Seller-side auto-chains listing → submit → transition → transaction. | "Add Transaction" |
 | `/create-listing` | Draft a standalone listing (no buyer yet). | "Add Listing" |
 | `/create-referral-payment` | Record a referral fee or Non-Referral Payment (termination, BPO, spiff). | "Create Referral / Payment" |
+| `/batch-create` | Create 2–5 drafts in one prompt — any mix of transactions, listings, referral payments. Gathers all gaps up front, fires the create calls concurrently, stops at the draft stage for user review. | — (two+ "Add" clicks at once) |
 | `/list-drafts` | Show every in-flight draft. | "Drafts" tab |
 | `/resume-draft` | Pick up the most-recent unfinished draft and fill gaps. | — |
 | `/update-draft` | Edit a field on an existing draft (price, commission, team, participants, dates). | Editing inside the draft |
@@ -30,13 +31,30 @@ cd transaction-builder-agent
 
 **Restart Claude** once `setup.sh` finishes. If you move the folder, re-run it.
 
-## Example
+## Examples
+
+### Single deal
 
 You type:
 
 > *"$200k sale at 120 Main St NYC 10022, $5,000 commission, I'm the listing agent, NY Pro Team."*
 
 Claude emits a `✓`/`~` parse summary (✓ = read from your message, ~ = defaulted), fires the arrakis calls, and returns a Bolt draft URL. The preview IS the review — interrupt with `Esc` if anything looks wrong. Warnings (team pre-cap fees, ledger errors) surface with 🚨 / ⚠️ above the URL.
+
+### Batch — multiple ops in one prompt
+
+You type:
+
+> *"Create a transaction where I sold 789 Oak NYC 10024 for $500k at 3% commission AND create a referral payment to Jane Smith at Keller Williams for $200."*
+
+Claude parses both, asks the combined gap questions once (4 per batch, cycles if more), then:
+
+- Fires the listing create + the referral-payment create in parallel at t=0
+- Continues the seller-side chain (submit listing → build txn from listing → fill buyer/dates → splits → verify → finalize) across subsequent turns
+- Stops at the **transaction draft** — the listing may be submitted (chain infrastructure), but the transaction waits for you to review and run `/submit-draft`
+- The referral payment, which has no draft stage in arrakis, requires an explicit "fire the batch" confirm before firing
+
+Final report gives one line per op with the review URL for each. Works for any mix — two transactions, three listings, transaction + referral, etc. Up to 5 ops per batch.
 
 ## Safety
 
