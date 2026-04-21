@@ -47,14 +47,7 @@ You type:
 
 > *"Create a transaction where I sold 789 Oak NYC 10024 for $500k at 3% commission AND create a referral payment to Jane Smith at Keller Williams for $200."*
 
-Claude parses both, asks the combined gap questions once (4 per batch, cycles if more), then:
-
-- Fires the listing create + the referral-payment create in parallel at t=0
-- Continues the seller-side chain (submit listing → build txn from listing → fill buyer/dates → splits → verify → finalize) across subsequent turns
-- Stops at the **transaction draft** — the listing may be submitted (chain infrastructure), but the transaction waits for you to review and run `/submit-draft`
-- The referral payment, which has no draft stage in arrakis, requires an explicit "fire the batch" confirm before firing
-
-Final report gives one line per op with the review URL for each. Works for any mix — two transactions, three listings, transaction + referral, etc. Up to 5 ops per batch.
+Claude asks for any missing info in one round of questions, then creates each item at the same time. Transactions come back as **drafts for you to review in Bolt** and submit when ready. Referral payments ask you to confirm first (no undo), then submit immediately. You get one review link per item. Up to 5 items per prompt — any mix of transactions, listings, or referral payments.
 
 ## Safety
 
