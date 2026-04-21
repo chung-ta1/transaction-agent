@@ -66,7 +66,7 @@ Per-op terminal calls:
 
 **Exception — the internal listing submit inside a seller-side chain IS allowed.** Seller-side transactions can't proceed to a transaction builder without a submitted Listing (arrakis requires a post-submit `result.id` for `build_transaction_from_listing`). So step 2 — `submit_draft(listingBuilderId)` → `LISTING_ACTIVE` — fires inside the batch. This is *infrastructure*, not the user-facing deliverable. The listing is not the thing the user is reviewing; the **transaction** is. Submitting the listing unlocks the transaction draft flow, then the batch stops.
 
-**Referral-payment has no draft stage.** Arrakis's `create_referral_payment` is a one-shot create-and-submit call — no `LISTING_ACTIVE`-style intermediate state exists. The batch handles this by requiring an **explicit confirmation gate** (see §4a) before firing `create_referral_payment`. The confirmation IS the review step. After the user confirms, arrakis commits the Transaction immediately; there is no undo other than termination.
+**Referral-payment has no draft stage.** Arrakis's `create_referral_payment` is a one-shot create-and-submit call — no `LISTING_ACTIVE`-style intermediate state exists. The in-chat preview in §4's combined parse summary IS the review step; the user can interrupt with Esc if anything's wrong. No separate confirm button. After firing, arrakis commits the Transaction immediately; there is no undo other than termination.
 
 **What never gets submitted in batch mode:**
 
@@ -165,7 +165,7 @@ Routing: /batch-create — parsed 2 operations.
   ⚠ (none — ready)
 
 Execution plan:
-  turn 1 (t=0): fire [1] create_full_draft(LISTING) + (after confirm gate) [2] create_referral_payment in parallel
+  turn 1 (t=0): fire [1] create_full_draft(LISTING) + [2] create_referral_payment in parallel
   turn 2-6:     continue [1]'s chain — submit listing → build txn → fill → set splits → verify → finalize
                 STOPS at finalize_draft. User submits the transaction later via /submit-draft.
                 [2] is live in arrakis after turn 1 (one-shot, no draft).
@@ -173,16 +173,7 @@ Execution plan:
 
 **G2a interpretation gate still runs per-op.** If any transaction op's raw commission percentages don't sum to 100, fire that op's `AskUserQuestion` interpretation gate BEFORE the combined parse summary — a single op with ambiguous money blocks the whole batch's preview. Once resolved, proceed.
 
-### 4a. Referral-payment confirm gate (fires BEFORE any writes if any op is a referral-payment)
-
-Referral payments are one-shot submits with no draft stage, so there's no post-hoc review — review happens in chat. When the parsed op list includes any `referral-payment`, fire a single `AskUserQuestion` AFTER the combined parse summary and BEFORE §5's writes:
-
-- Question: *"Op [N] is a referral payment — arrakis has no draft stage, so this will be submitted immediately on confirm. Proceed with the whole batch?"*
-- Options: *"Fire the batch"* / *"Cancel — let me reconsider"*
-
-If the user picks cancel, stop the whole batch. If confirmed, proceed to §5.
-
-When the batch has NO referral-payment ops, skip this gate — the per-op drafts are their own review step, and firing the batch is natural.
+**No confirm gate.** The combined parse summary IS the review step. Emitting the summary text and firing the create calls happen in the same assistant turn — user can interrupt with Esc if anything in the preview is wrong. Same pattern as `/create-transaction` and `/create-referral-payment` use. Don't add a separate "Are you sure?" `AskUserQuestion` — the missing-info questions in §2/§3 are the last gate before firing, and they're for gathering data the tool can't run without, not for confirmation.
 
 ### 5. Execute — parallel first-step launch, then continue chains
 
@@ -291,4 +282,4 @@ One write per file covers every op's learnings.
 - Never submit a transaction builder. This skill produces draft transactions for user review; `/submit-draft` owns submission. Applies to buyer-side, seller-side, DUAL, LANDLORD, TENANT, and from-listing transactions alike.
 - Never transition a listing to `LISTING_IN_CONTRACT` in this skill. That transition requires a submitted linked transaction, which only exists after the user runs `/submit-draft`. `/submit-draft`'s seller-side post-submit hook handles it.
 - The one exception to "never submit": the intermediate `submit_draft(listingBuilderId)` inside a seller-side chain is required to unlock `build_transaction_from_listing`. That's chain infrastructure, not the user-facing deliverable. Do submit the listing; do NOT submit the transaction.
-- Never fire `create_referral_payment` without the §4a confirmation gate. One-shot submit, no undo — the user must explicitly confirm.
+- Never fire `create_referral_payment` without emitting the full combined parse summary in the same turn. The in-chat preview is the only review step for referral payments (arrakis has no draft stage); if the preview is missing, the user has no way to catch a wrong email, amount, or brokerage before arrakis commits.

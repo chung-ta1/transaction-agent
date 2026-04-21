@@ -47,7 +47,7 @@ You type:
 
 > *"Create a transaction where I sold 789 Oak NYC 10024 for $500k at 3% commission AND create a referral payment to Jane Smith at Keller Williams for $200."*
 
-Claude asks for any missing info in one round of questions, then creates each item at the same time. Transactions come back as **drafts for you to review in Bolt** and submit when ready. Referral payments ask you to confirm first (no undo), then submit immediately. You get one review link per item. Up to 5 items per prompt — any mix of transactions, listings, or referral payments.
+Claude asks for any missing info in one round of questions, then creates each item at the same time. Transactions come back as **drafts for you to review in Bolt** and submit when ready. Referral payments submit immediately (Real has no draft stage for them) — Claude shows the full preview right before firing; hit Esc if anything looks wrong. You get one review link per item. Up to 5 items per prompt — any mix of transactions, listings, or referral payments.
 
 ## Safety
 

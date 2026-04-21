@@ -41,7 +41,7 @@ Arrakis has no draft stage for this flow:
 POST /api/v1/agent/{senderAgentYentaId}/referral-and-disburse
 ```
 
-One call, immediate submit. The resulting Transaction is live in arrakis the instant this tool returns. Because there's no Bolt draft URL, **the only review step happens inside this chat** — never fire `create_referral_payment` without first showing a full preview and getting an explicit confirmation click from the user.
+One call, immediate submit. The resulting Transaction is live in arrakis the instant this tool returns. Because there's no Bolt draft URL, **the in-chat preview IS the review step** — emit the full preview block in the same turn as the `create_referral_payment` call so the user sees what's being submitted and can interrupt with Esc if it's wrong. No "are you sure?" button gate.
 
 ## Runbook
 
@@ -201,7 +201,7 @@ create_referral_payment({
 })
 ```
 
-The tool returns `{ transactionId, referralId, transactionCode, detailUrl, raw }`. If the call fails, substring-match the error against `memory/error-messages.md`; surface the fix in plain English. Never auto-retry a failed referral-and-disburse — the user must confirm before the second attempt.
+The tool returns `{ transactionId, referralId, transactionCode, detailUrl, raw }`. If the call fails, substring-match the error against `memory/error-messages.md`; surface the fix in plain English. Never auto-retry a failed referral-and-disburse — stop, explain the error, and let the user re-issue the prompt.
 
 ### 6. Return the URL
 
@@ -230,7 +230,7 @@ If the user needs to add the payment info (skipped earlier), tell them: the tran
 
 ## What you never do
 
-- Never fire `create_referral_payment` without the explicit confirmation click in step 4. There is no arrakis-side draft to fall back on.
+- Never fire `create_referral_payment` without emitting the full preview block in the same turn. The in-chat preview is the only review step; skipping it means the user has no way to catch a wrong name, amount, or brokerage before arrakis commits.
 - Never split a single-string name into first/last when building the API body — arrakis's `CreateAndDisburseReferralRequest` only takes `externalAgentName` and `clientName` as single fields.
 - Never send empty-string payment fields to pass validation. Omit them entirely.
 - Never send a `referredPropertyAddress` missing required subfields; send the whole object or none at all.
