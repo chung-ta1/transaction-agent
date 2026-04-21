@@ -507,23 +507,27 @@ Each `AskUserQuestion` call is a full round-trip. If you have 4 or fewer gaps, a
 
 ### 7a. Seller-side autonomous chain (SELLER / DUAL / LANDLORD rep)
 
-When the user's representation is `SELLER`, `DUAL`, or `LANDLORD`, a listing must exist in arrakis (in `LISTING_IN_CONTRACT` state) before the transaction can be created. **Do this chain autonomously** — don't ask the user to go create a listing in Bolt. The MCP does the whole thing:
+When the user's representation is `SELLER`, `DUAL`, or `LANDLORD`, the transaction must be built from a linked Listing. **Do this chain autonomously** — don't ask the user to go create a listing in Bolt. The MCP does the whole thing:
 
-1. **Create + fill the listing** — `create_draft_with_essentials({ type: "LISTING", ...same address/price/commission/seller data, representationType: SELLER|LANDLORD })`. Pass `listingDate` + `listingExpirationDate` in `priceAndDates` instead of `acceptanceDate` + `closingDate`. Listings have no buyers.
-2. **Submit the listing** — `submit_draft({ env, builderId: <listingBuilderId> })`. This moves the listing to `LISTING_ACTIVE` in arrakis.
-3. **Transition to in-contract** — `transition_listing({ env, listingId: <listingBuilderId>, lifecycleState: "LISTING_IN_CONTRACT" })`. This is the gate Bolt enforces at step 2→3 of its seller-side wizard; we satisfy it server-side.
-4. **Build the transaction from the listing** — `build_transaction_from_listing({ env, listingId: <listingBuilderId> })`. Returns a fresh `builderId` inheriting property/price/seller/commission data from the listing.
-5. **Fill the transaction-only fields** — use granular tools (or a second `create_draft_with_essentials` pass with `type: "TRANSACTION"`) to add: `buyers`, `acceptanceDate`, `closingDate`, plus anything the listing didn't carry over.
-6. **Continue with step 7 (commission math) on the transaction builder.**
+1. **Create + fill the listing** — `create_draft_with_essentials({ type: "LISTING", ...same address/price/commission/seller data, representationType: SELLER|LANDLORD })` (or `create_full_draft` with `type: "LISTING"`). Pass `listingDate` + `listingExpirationDate` in `priceAndDates` instead of `acceptanceDate` + `closingDate`. Listings have no buyers.
+2. **Submit the listing** — `submit_draft({ env, builderId: <listingBuilderId> })`. Listing goes to `LISTING_ACTIVE`. **Capture `result.id` from the response — it's a NEW UUID distinct from the builderId, and every lifecycle operation below takes this post-submit id.**
+3. **Build the transaction from the listing** — `build_transaction_from_listing({ env, listingId: <submit.result.id> })`. Works while the listing is `LISTING_ACTIVE` (the tool's older doc claimed `LISTING_IN_CONTRACT` was required — not true). Returns a fresh transaction `builderId` inheriting property/price/seller/commission/owner-as-SELLERS_AGENT from the listing.
+4. **Fill the transaction-only fields** — use granular tools (`update_buyer_seller`, `update_price_and_dates`) to add `buyers`, `acceptanceDate`, `closingDate`. The listing doesn't carry these.
+5. **Commission math on the transaction** — `compute_commission_splits` → `set_commission_splits` → `verify_draft_splits`. Same G1-G5 accuracy stack as buyer-side.
+6. **Finalize the transaction** — `finalize_draft` (opcity/personal-deal/fees/title no-ops).
+7. **Submit the transaction** — `submit_draft({ env, builderId: <txnBuilderId> })`. This creates the "open Transaction" arrakis needs to fire the in-contract event. If the user wants to review the draft first, STOP here and hand off to `/submit-draft`.
+8. **Transition the listing** — `transition_listing({ env, listingId: <submit.result.id from step 2>, lifecycleState: "LISTING_IN_CONTRACT" })`. This only works *after* step 7 — arrakis's `ListingInContractEvent` requires a submitted Transaction linked to the listing. Calling it earlier 404s with `"No open transaction found for in contract listing Id"`.
+
+**Id discipline.** Don't reuse a pre-submit builderId for lifecycle operations on the submitted entity. Post-submit, the Listing has its own id (`submit.result.id`). Mixing them up causes 404s at step 3, 8, or both. When in doubt, log the two ids side-by-side before firing the next call.
 
 **When to stop and ask the user:**
-- arrakis returns a validation error on any of steps 1-4 (propagate via `memory/error-messages.md` — may be "Year built is required in the USA" if user typo'd, referral-only-agent rules, etc.).
-- The user said they already have a listing and supplied a listingId — in that case, skip to step 3 (transition) with their listingId, NOT step 1.
+- arrakis returns a validation error on any of steps 1-6 (propagate via `memory/error-messages.md`).
+- The user said they already have a listing and supplied a listingId — in that case, skip step 1-2, start at step 3 with their listingId.
 - `verify_draft_splits` fails on the transaction (G5 blocker).
 
 **Do NOT stop and ask:**
 - "Do you have an active listing?" — the MCP creates it.
-- "Should I submit the listing?" — yes, that's the whole point.
+- "Should I submit the listing?" — yes, step 2 is non-negotiable.
 - "Want me to continue to the transaction?" — yes, that's the user's original intent.
 
 ### 7. Commission math — use the deterministic tools, don't compute in your head

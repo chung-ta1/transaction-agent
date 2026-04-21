@@ -167,4 +167,10 @@ Never chain auto-retries: one attempt per failure, period.
 
 - match: "Cannot initialize a CANDIDATE agent"
   fix: "The yentaId you passed belongs to a CANDIDATE (partially-onboarded) agent. Arrakis refuses to put candidates on a transaction as partners or referrals. Pick a different agent (status=ACTIVE) from search_agent_by_name results, or switch to an EXTERNAL referral (kind=external) if they're not yet a Real agent. The partial draft is intact — use the granular add_referral tool on the existing builderId to continue."
+
+- match: "No open transaction found for in contract listing Id"
+  fix: "arrakis's transition_listing(LISTING_IN_CONTRACT) raises a ListingInContractEvent that requires an 'open transaction' (= SUBMITTED Transaction, not just a builder) already linked to the listing. The runbook's documented step order (transition BEFORE build_transaction_from_listing) is incorrect — the correct order for team1/play is: submit listing → LISTING_ACTIVE → build_transaction_from_listing → fill + set splits + finalize → SUBMIT the transaction → THEN transition_listing to IN_CONTRACT. Do not retry transition until the linked transaction has been submitted (POST /transaction-builder/{id}/submit)."
+
+- match: "Transaction not found by id"
+  fix: "You're passing a transaction-builder id to an endpoint that operates on submitted Transaction / Listing entities, which use a different id after submit. For listings: use the `result.id` returned by submit_draft (NOT the original builderId) when calling transition_listing or build_transaction_from_listing on the post-submit listing. For submitted transactions: the submit response's `result.id` is also the authoritative id."
 ```

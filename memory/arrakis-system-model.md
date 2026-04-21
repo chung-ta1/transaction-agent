@@ -50,8 +50,8 @@ This is the core thing most flows get wrong:
 | `setCommissionSplits` | builder has salePrice + participants | `"commissionSplitsInfo cannot be empty"` / `"sum of commission percentage should be 100"` |
 | `addCommissionPayerParticipant` | builder exists; full 6 fields | `"First name is required for commission payer info"` etc. |
 | `submitDraft` | all validate() rules pass | various validation errors |
-| `transitionListing(LISTING_IN_CONTRACT)` | listing in `LISTING_ACTIVE` | invalid-transition error |
-| `buildTransactionFromListing` | listing in `LISTING_IN_CONTRACT` | "Listing not in-contract" error |
+| `transitionListing(LISTING_IN_CONTRACT)` | listing submitted (`LISTING_ACTIVE`) AND a submitted Transaction already linked to it; `listingId` = post-submit `result.id`, not builderId | 404 `"No open transaction found for in contract listing Id"` if no submitted transaction exists yet; 404 `"Transaction not found by id"` if builderId was passed |
+| `buildTransactionFromListing` | listing submitted (works on `LISTING_ACTIVE`, contrary to older docs saying `LISTING_IN_CONTRACT`); `listingId` = post-submit `result.id`, not builderId | 404 `"Transaction not found by id"` if builderId was passed instead of the post-submit id |
 
 ## Scenario → action map
 
@@ -73,11 +73,12 @@ Use these when deciding the next action based on the user's request:
 **Autonomous chain — do NOT stop to ask about listing:**
 1-5. Same as buyer-side up to validation
 6. `create_draft_with_essentials(type=LISTING, rep=SELLER, listingDate+listingExpirationDate)` → listing builderId
-7. `submit_draft(listingBuilderId)` — listing goes LISTING_ACTIVE
-8. `transition_listing(listingId, LISTING_IN_CONTRACT)`
-9. `build_transaction_from_listing(listingId)` → new transaction builderId inheriting data
-10. Fill transaction-only fields (buyers, acceptance/closing dates)
-11-end. Commission + finalize as in buyer-side
+7. `submit_draft(listingBuilderId)` — listing goes LISTING_ACTIVE; **capture `result.id`** (new post-submit Listing id; DIFFERENT from builderId)
+8. `build_transaction_from_listing(result.id)` — works on ACTIVE listings; returns transaction builderId
+9. Fill transaction-only fields (buyers, acceptance/closing dates)
+10. Commission + finalize on the transaction (compute_commission_splits → set_commission_splits → verify_draft_splits → finalize_draft)
+11. `submit_draft(txnBuilderId)` — creates the "open Transaction" arrakis needs (OR hand off to user via `/submit-draft` if they want to review first)
+12. `transition_listing(result.id from step 7, LISTING_IN_CONTRACT)` — only succeeds AFTER step 11; `ListingInContractEvent` requires a submitted Transaction linked to the listing
 
 ### User: "create a listing"
 1-5. Same pre-flight + validation
@@ -116,7 +117,8 @@ This prevents duplicates and lets the agent pick up mid-flow — e.g., if the pr
 | Fixable-with-value | `"Year built is required in the USA"` | Ask user for the value, retry |
 | Structural violation | `"Referral-only agents cannot own regular transactions"` | ABORT — tell user; can't proceed without changing the owner |
 | Cross-country | `"You cannot create a transaction in a country …"` | ABORT — tell user to pick a different property |
-| Listing pre-check upstream of fix | `"Listing not in LISTING_IN_CONTRACT"` | Call `transition_listing` autonomously, retry |
+| Stale post-submit id | `"Transaction not found by id"` on `transition_listing` / `build_transaction_from_listing` | Re-issue with `result.id` from the original `submit_draft` response, not the builderId |
+| In-contract event dependency | `"No open transaction found for in contract listing Id"` | Submit the linked transaction FIRST, then retry `transition_listing(LISTING_IN_CONTRACT)`. Transitioning before the transaction is submitted cannot succeed. |
 | User data needed | any "required field is missing" where user didn't give it | Ask via `AskUserQuestion` |
 
 See `memory/error-messages.md` for the full match→fix dictionary.

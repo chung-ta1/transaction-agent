@@ -187,6 +187,23 @@ From `TransactionBuilder.validate()` (arrakis-core, line 639):
 
 The MCP checks these client-side before returning the bolt URL so the user doesn't open a broken draft.
 
+## Post-submit entity ids — builderId vs. submitted-entity id
+
+**After any `submit_draft`, use `result.id` (not the original builderId) for subsequent domain operations on the submitted entity.** arrakis creates a separate `Listing` or `Transaction` row at submit with a fresh UUID; the builder's id stops being the authoritative handle. Tools that operate on the submitted entity must receive the post-submit id:
+
+- `transition_listing(listingId, …)` — `listingId` is the post-submit `result.id`, NOT the builderId that was submitted.
+- `build_transaction_from_listing(listingId)` — same. Works on listings in `LISTING_ACTIVE` (contrary to the tool doc saying `LISTING_IN_CONTRACT`).
+
+Builder-scoped reads (`get_draft(builderId)`) still resolve to the builder row post-submit, which is why it's easy to reach for the wrong id. Whenever the next step is a lifecycle operation, consult the submit response and grab `result.id` before proceeding.
+
+**Seller-side ordering caveat.** arrakis's `transition_listing(LISTING_IN_CONTRACT)` raises a `ListingInContractEvent` that requires an "open transaction" — i.e. a SUBMITTED Transaction entity — already linked to the listing. The runbook's earlier recommendation of transitioning before creating the transaction builder does not work; the correct order for team1/play is:
+
+1. Create listing → submit → `LISTING_ACTIVE`
+2. `build_transaction_from_listing(result.id)` — arrakis is happy with ACTIVE
+3. Fill transaction (buyers, dates) → splits → verify → finalize
+4. Submit the transaction → creates the "open Transaction" arrakis expects
+5. THEN `transition_listing(result.id, LISTING_IN_CONTRACT)` succeeds
+
 ## Draft URL
 
 `https://bolt.{env}realbrokerage.com/transaction/create/{builderId}` — singular `transaction`, not plural. Using the plural form makes Bolt's router interpret "create" as a transactionId and throw `could not be converted to type 'UUID'`. Verified 2026-04-17 against team1.
