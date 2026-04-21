@@ -31,13 +31,17 @@ Fire these in a single assistant turn:
 
 ## Identify the target draft
 
-Three cases:
+**Default: always pick the most recent in-flight draft from `list_my_builders` (sorted by `updatedAt` desc).** No `AskUserQuestion` in the common case — the slash-command description promises "most recent unfinished one" and asking adds a round-trip the user doesn't want.
+
+Cases:
 
 1. **User gave a builderId or env+builderId explicitly** → use it.
-2. **`list_my_builders` returns exactly one in-flight draft** → use it; confirm in the preview.
-3. **`list_my_builders` returns multiple candidates** → `AskUserQuestion` with up to 4 recent drafts as options (label: `{type} · {property.address or short-id} · updated {updatedAt}`). User picks one.
+2. **User's prompt disambiguates by address / price / id prefix** (e.g. "resume the 123 Main St one", "the $500k one") → filter `list_my_builders` results by that signal; if exactly one match, use it; if multiple, THEN ask.
+3. **No disambiguation signal** → use the most recent (row 0 of `list_my_builders`). Confirm in the status summary; user can interrupt if wrong.
 
 No in-flight drafts and no builderId given → stop and ask the user to paste the builderId from Bolt.
+
+**If the most-recent draft is already fully submittable** (no `⚠` gaps in the status summary), say so explicitly and route the user to `/submit-draft` instead of running the fill-gaps flow on an empty gap list.
 
 ## Fetch current state
 
