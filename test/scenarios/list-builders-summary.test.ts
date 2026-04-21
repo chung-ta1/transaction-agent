@@ -3,34 +3,33 @@ import { summarizeBuilderListing } from "../../src/tools/granular/discover.js";
 
 describe("summarizeBuilderListing", () => {
   it("projects a full arrakis builder body down to the summary fields", () => {
+    // Arrakis returns the paged object at the top level — no `builders` wrapper.
     const raw = {
-      builders: {
-        pageNumber: 0,
-        pageSize: 10,
-        hasNext: true,
-        totalCount: 42,
-        results: [
-          {
-            id: "2b960e1b-07fe-478a-a0dd-5ebd34989731",
-            builderType: "TRANSACTION",
-            createdAt: 1776722231967,
-            updatedAt: 1776722438955,
-            address: { street: "123 Main St", city: "New York", state: "NEW_YORK", zip: "10024" },
-            agentsInfo: { representationType: "SELLER", teamId: "d712dee8-60cd-4f49-98bc-2e835b59cb85" },
-            dealType: "SALE",
-            propertyType: "RESIDENTIAL",
-            salePrice: { amount: 500000, currency: "USD" },
-            grossCommission: { commissionAmount: { amount: 15000, currency: "USD" } },
-            yearBuilt: 2020,
-            mlsNumber: "ca2233",
-            builtFromTransactionId: "5ef18db3-5743-4a3b-a0a1-35512cbf1613",
-            // noise that must be stripped:
-            participants: new Array(40).fill({ id: "x", yentaId: "y", payment: { amount: { amount: 1 } } }),
-            commissionSplits: new Array(10).fill({ participantId: "x", percentage: { string: "10.00%" } }),
-            otherParticipants: new Array(5).fill({ id: "x", firstName: "t", lastName: "c" }),
-          },
-        ],
-      },
+      pageNumber: 0,
+      pageSize: 10,
+      hasNext: true,
+      totalCount: 42,
+      results: [
+        {
+          id: "2b960e1b-07fe-478a-a0dd-5ebd34989731",
+          builderType: "TRANSACTION",
+          createdAt: 1776722231967,
+          updatedAt: 1776722438955,
+          address: { street: "123 Main St", city: "New York", state: "NEW_YORK", zip: "10024" },
+          agentsInfo: { representationType: "SELLER", teamId: "d712dee8-60cd-4f49-98bc-2e835b59cb85" },
+          dealType: "SALE",
+          propertyType: "RESIDENTIAL",
+          salePrice: { amount: 500000, currency: "USD" },
+          grossCommission: { commissionAmount: { amount: 15000, currency: "USD" } },
+          yearBuilt: 2020,
+          mlsNumber: "ca2233",
+          builtFromTransactionId: "5ef18db3-5743-4a3b-a0a1-35512cbf1613",
+          // noise that must be stripped:
+          participants: new Array(40).fill({ id: "x", yentaId: "y", payment: { amount: { amount: 1 } } }),
+          commissionSplits: new Array(10).fill({ participantId: "x", percentage: { string: "10.00%" } }),
+          otherParticipants: new Array(5).fill({ id: "x", firstName: "t", lastName: "c" }),
+        },
+      ],
     };
 
     const summary = summarizeBuilderListing(raw);
@@ -58,9 +57,7 @@ describe("summarizeBuilderListing", () => {
 
   it("tolerates nullish / stub drafts without throwing", () => {
     const raw = {
-      builders: {
-        results: [{ id: "abc-123", builderType: "TRANSACTION" }],
-      },
+      results: [{ id: "abc-123", builderType: "TRANSACTION" }],
     };
     const summary = summarizeBuilderListing(raw);
     const row = summary.results[0];

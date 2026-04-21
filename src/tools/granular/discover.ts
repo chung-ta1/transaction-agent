@@ -76,7 +76,7 @@ export function summarizeBuilderListing(raw: unknown): {
   totalCount: number | null;
   results: BuilderSummary[];
 } {
-  const paged = (raw as { builders?: Record<string, unknown> })?.builders ?? {};
+  const paged = (raw ?? {}) as Record<string, unknown>;
   const results = Array.isArray(paged.results) ? paged.results : [];
   return {
     pageNumber: asNumberOrNull(paged.pageNumber),
